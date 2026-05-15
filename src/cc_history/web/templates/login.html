@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login - CC History Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-zinc-50 text-zinc-950">
+    <main class="mx-auto flex min-h-screen max-w-sm items-center px-5">
+      <form
+        method="post"
+        action="/login"
+        class="w-full rounded-lg border border-zinc-200 bg-white p-5"
+      >
+        <h1 class="text-xl font-semibold">CC History Viewer</h1>
+        {% if error %}
+        <div class="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {{ error }}
+        </div>
+        {% endif %}
+        <label class="mt-4 block">
+          <span class="mb-1 block text-sm font-medium text-zinc-700">Password</span>
+          <input
+            class="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+            type="password"
+            name="password"
+            autofocus
+          />
+        </label>
+        <button
+          class="mt-4 w-full rounded bg-zinc-950 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          type="submit"
+        >
+          Login
+        </button>
+      </form>
+    </main>
+  </body>
+</html>

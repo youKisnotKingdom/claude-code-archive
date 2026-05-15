@@ -1,0 +1,1488 @@
+{% extends "base.html" %} {% block title %}Session - {{ session_id }}{% endblock %} {% block content
+%}
+<div class="ccv-session-shell">
+  <aside class="ccv-left-pane">
+    <div class="ccv-pane-header">
+      <a href="/users/{{ user }}/projects/{{ project }}" class="ccv-back-link">Back to sessions</a>
+      <div class="ccv-pane-title">Sessions</div>
+      <div class="ccv-pane-subtitle">{{ sessions|length }} total in this project</div>
+    </div>
+    <div class="ccv-pane-scroll ccv-session-list">
+      {% for session in sessions %}
+      <a
+        href="/users/{{ user }}/projects/{{ project }}/sessions/{{ session.session_id }}"
+        class="ccv-session-card {% if session.session_id == session_id %}is-active{% endif %}"
+      >
+        <div class="ccv-session-card-title">{{ session.title }}</div>
+        <div class="ccv-session-card-meta">
+          {{ session.message_count }} messages · {{ session.size }} bytes
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <section class="ccv-main-pane">
+    <div class="ccv-chat-header">
+      <div class="ccv-chat-title-wrap">
+        <div class="ccv-chat-kicker">{{ user }}</div>
+        <h1 class="ccv-chat-title">{{ session_title }}</h1>
+        <div class="ccv-chat-subtitle">{{ project_decoded }} · {{ session_id }}</div>
+      </div>
+      <div class="ccv-chat-actions">
+        <a href="/search?user={{ user }}" class="ccv-ghost-button">Search user</a>
+        <a href="/users/{{ user }}/projects/{{ project }}" class="ccv-ghost-button">Sessions</a>
+      </div>
+    </div>
+
+    <div class="ccv-metrics">
+      <div class="ccv-metric">
+        <span>{{ session_summary.message_count }}</span><small>messages</small>
+      </div>
+      <div class="ccv-metric">
+        <span>{{ session_summary.tool_count }}</span><small>tools</small>
+      </div>
+      <div class="ccv-metric"><span>{{ session_summary.user_count }}</span><small>user</small></div>
+      <div class="ccv-metric">
+        <span>{{ session_summary.assistant_count }}</span><small>assistant</small>
+      </div>
+      {% if current_session and current_session.total_tokens %}
+      <div class="ccv-metric">
+        <span>{{ current_session.total_tokens }}</span><small>tokens</small>
+      </div>
+      {% endif %} {% if current_session and current_session.model_name %}
+      <div class="ccv-metric is-wide">
+        <span>{{ current_session.model_name }}</span><small>model</small>
+      </div>
+      {% endif %} {% if session_summary.error_count %}
+      <div class="ccv-metric is-error">
+        <span>{{ session_summary.error_count }}</span><small>errors</small>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="ccv-find-bar">
+      <input
+        id="ccv-session-find-input"
+        type="search"
+        placeholder="Find in this session"
+        autocomplete="off"
+      />
+      <button type="button" data-ccv-find-prev aria-label="Previous match">Prev</button>
+      <button type="button" data-ccv-find-next aria-label="Next match">Next</button>
+      <span id="ccv-session-find-count">0/0</span>
+    </div>
+
+    <div class="ccv-main-scroll">
+      <div class="ccv-thread">
+        {% for entry in entries %} {% set is_user = entry.type == "user" %} {% set is_assistant =
+        entry.type == "assistant" %} {% set is_meta = not is_user and not is_assistant and not
+        entry.is_error %}
+        <article
+          {%
+          if
+          entry.uuid
+          %}id="{{ entry.uuid }}"
+          {%
+          endif
+          %}
+          class="ccv-message-row {% if is_user %}is-user{% elif is_assistant %}is-assistant{% elif entry.is_error %}is-error{% else %}is-meta{% endif %}"
+        >
+          <div class="ccv-avatar">{{ "U" if is_user else ("A" if is_assistant else "!") }}</div>
+          <div class="ccv-message-stack">
+            {% if is_meta %}
+            <details class="ccv-meta-event">
+              <summary>
+                <span>{{ entry.title }}</span>
+                <small
+                  >{{ entry.type }}{% if entry.timestamp %} · {{ entry.timestamp }}{% endif
+                  %}</small
+                >
+              </summary>
+              {% for text in entry.texts %}
+              <pre>{{ text }}</pre>
+              {% endfor %}
+            </details>
+            {% else %}
+            <div class="ccv-message-meta">
+              <span class="ccv-entry-type">{{ entry.type }}</span>
+              <span class="ccv-entry-title">{{ entry.title }}</span>
+              {% if entry.timestamp %}
+              <span class="ccv-entry-time">{{ entry.timestamp }}</span>
+              {% endif %}
+            </div>
+
+            <div class="ccv-bubble">
+              {% if entry.error %}
+              <div class="ccv-error-banner">{{ entry.error }}</div>
+              {% endif %} {% for text in entry.texts %}
+              <div class="ccv-markdown {% if is_user %}is-user-text{% endif %}">
+                {{ text|message_html|safe }}
+              </div>
+              {% endfor %} {% for item in entry.thinking %}
+              <details class="ccv-thinking">
+                <summary>Thinking</summary>
+                <pre>{{ item }}</pre>
+              </details>
+              {% endfor %} {% for tool in entry.tools %}
+              <details id="tool-{{ tool.id }}" class="ccv-tool-card is-{{ tool.kind }}">
+                <summary>
+                  <span class="ccv-tool-badge">Tool: {{ tool.name }}</span>
+                  {% if tool.summary %}
+                  <span class="ccv-tool-summary">{{ tool.summary }}</span>
+                  {% endif %}
+                  <span class="ccv-tool-state {% if tool.has_result %}is-done{% endif %}"
+                    >{% if tool.has_result %}result{% else %}pending{% endif %}</span
+                  >
+                </summary>
+                <div class="ccv-tool-body">
+                  {% if tool.kind == "bash" %}
+                  <div class="ccv-terminal">
+                    {% if tool.display.description %}
+                    <div class="ccv-terminal-description">{{ tool.display.description }}</div>
+                    {% endif %}
+                    <div class="ccv-terminal-command">
+                      <span>$</span> {{ tool.display.command or tool.body.replace("$ ", "") }}
+                    </div>
+                  </div>
+                  {% elif tool.display.type in ["read", "write", "edit", "multiedit",
+                  "notebookedit"] %}
+                  <div class="ccv-file-tool">
+                    <div class="ccv-file-tool-path">
+                      {{ tool.display.file_path or tool.summary or tool.name }}
+                    </div>
+                    {% if tool.display.type == "read" %}
+                    <div class="ccv-file-tool-meta">
+                      {% if tool.display.offset is not none %}<span
+                        >offset {{ tool.display.offset }}</span
+                      >{% endif %} {% if tool.display.limit is not none %}<span
+                        >limit {{ tool.display.limit }}</span
+                      >{% endif %}
+                    </div>
+                    {% elif tool.display.type == "write" %}
+                    <pre class="ccv-tool-input">{{ tool.display.content }}</pre>
+                    {% else %} {% for edit in tool.display.edits %}
+                    <div class="ccv-diff-pair">
+                      <div>
+                        <div class="ccv-diff-label is-old">old</div>
+                        <pre>{{ edit.old }}</pre>
+                      </div>
+                      <div>
+                        <div class="ccv-diff-label is-new">new</div>
+                        <pre>{{ edit.new }}</pre>
+                      </div>
+                    </div>
+                    {% endfor %} {% endif %}
+                  </div>
+                  {% elif tool.display.type == "todo" %}
+                  <div class="ccv-todo-tool">
+                    {% for todo in tool.display.todos %}
+                    <div class="ccv-todo-row is-{{ todo.status }}">
+                      <span>{{ todo.status }}</span>
+                      <strong>{{ todo.content }}</strong>
+                      <small>{{ todo.priority }}</small>
+                    </div>
+                    {% else %}
+                    <pre class="ccv-tool-input">{{ tool.body }}</pre>
+                    {% endfor %}
+                  </div>
+                  {% else %}
+                  <pre class="ccv-tool-input">{{ tool.body }}</pre>
+                  {% endif %} {% if tool.result_display.type == "command" %}
+                  <div class="ccv-result-block">
+                    {% if tool.result_display.stdout %}
+                    <pre class="ccv-result-stream is-stdout">{{ tool.result_display.stdout }}</pre>
+                    {% endif %} {% if tool.result_display.stderr %}
+                    <pre class="ccv-result-stream is-stderr">{{ tool.result_display.stderr }}</pre>
+                    {% endif %} {% if tool.result_display.interrupted %}
+                    <div class="ccv-result-note is-warning">Interrupted</div>
+                    {% endif %}
+                  </div>
+                  {% elif tool.result_display.type == "file_list" %}
+                  <div class="ccv-result-block">
+                    <div class="ccv-result-meta">
+                      {{ tool.result_display.num_files or tool.result_display.filenames|length }}
+                      files {% if tool.result_display.truncated %} · truncated{% endif %}
+                    </div>
+                    <div class="ccv-result-file-list">
+                      {% for file in tool.result_display.filenames %}
+                      <div>{{ file }}</div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  {% elif tool.result_display.type == "file_content" %}
+                  <div class="ccv-result-block">
+                    <div class="ccv-file-tool-path">{{ tool.result_display.file_path }}</div>
+                    <pre class="ccv-tool-result">{{ tool.result_display.content }}</pre>
+                  </div>
+                  {% elif tool.result_display.type in ["edit", "create"] %}
+                  <div class="ccv-result-block">
+                    <div class="ccv-file-tool-path">{{ tool.result_display.file_path }}</div>
+                    {% if tool.result_display.type == "create" %}
+                    <pre class="ccv-tool-result">{{ tool.result_display.content }}</pre>
+                    {% else %} {% if tool.result_display.old or tool.result_display.new %}
+                    <div class="ccv-diff-pair">
+                      <div>
+                        <div class="ccv-diff-label is-old">old</div>
+                        <pre>{{ tool.result_display.old }}</pre>
+                      </div>
+                      <div>
+                        <div class="ccv-diff-label is-new">new</div>
+                        <pre>{{ tool.result_display.new }}</pre>
+                      </div>
+                    </div>
+                    {% endif %} {% endif %} {% if tool.result_display.user_modified %}
+                    <div class="ccv-result-note is-warning">
+                      User modified this file during the edit.
+                    </div>
+                    {% endif %}
+                  </div>
+                  {% elif tool.result_display.type == "todo" %}
+                  <div class="ccv-result-block">
+                    {% for todo in tool.result_display.new_todos %}
+                    <div class="ccv-todo-row is-{{ todo.status }}">
+                      <span>{{ todo.status }}</span>
+                      <strong>{{ todo.content }}</strong>
+                      <small>{{ todo.priority }}</small>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% elif tool.result_display.type == "json" %}
+                  <pre class="ccv-tool-result">{{ tool.result_display.json }}</pre>
+                  {% elif tool.result_display.type == "text" %} {% for result in
+                  tool.result_display.texts %}
+                  <pre class="ccv-tool-result">{{ result }}</pre>
+                  {% endfor %} {% endif %} {% for image in tool.result_images %}
+                  <img
+                    class="ccv-inline-image"
+                    src="{{ image.data_uri }}"
+                    alt="{{ image.media_type }} tool result"
+                  />
+                  {% endfor %} {% for document in tool.result_documents %}
+                  <details class="ccv-document">
+                    <summary>Document: {{ document.media_type }}</summary>
+                    {% if document.text %}
+                    <pre>{{ document.text }}</pre>
+                    {% endif %}
+                  </details>
+                  {% endfor %} {% if tool.subagent %}
+                  <details class="ccv-subagent">
+                    <summary>
+                      <span>Subagent</span>
+                      <small>
+                        {% if tool.subagent.agent_id %}{{ tool.subagent.agent_id }} · {% endif %} {{
+                        tool.subagent.message_count }} messages
+                      </small>
+                    </summary>
+                    {% if tool.subagent.prompt %}
+                    <div class="ccv-subagent-prompt">{{ tool.subagent.prompt }}</div>
+                    {% endif %}
+                    <div class="ccv-subagent-thread">
+                      {% for subentry in tool.subagent.entries %}
+                      <div class="ccv-subagent-message is-{{ subentry.type }}">
+                        <div class="ccv-subagent-role">{{ subentry.title }}</div>
+                        {% for text in subentry.texts %}
+                        <div class="ccv-markdown">{{ text|message_html|safe }}</div>
+                        {% endfor %} {% for subtool in subentry.tools %}
+                        <div class="ccv-subagent-tool">
+                          Tool: {{ subtool.name }}{% if subtool.summary %} · {{ subtool.summary }}{%
+                          endif %}
+                        </div>
+                        {% endfor %}
+                      </div>
+                      {% endfor %}
+                    </div>
+                  </details>
+                  {% endif %} {% if not tool.has_result %}
+                  <div class="ccv-muted-note">No result recorded.</div>
+                  {% endif %}
+                </div>
+              </details>
+              {% endfor %} {% for image in entry.images %}
+              <img
+                class="ccv-inline-image"
+                src="{{ image.data_uri }}"
+                alt="{{ image.media_type }} content"
+              />
+              {% endfor %} {% for document in entry.documents %}
+              <details class="ccv-document">
+                <summary>Document: {{ document.media_type }}</summary>
+                {% if document.text %}
+                <pre>{{ document.text }}</pre>
+                {% endif %}
+              </details>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <aside class="ccv-right-pane">
+    <div class="ccv-pane-header">
+      <div class="ccv-pane-title">Tools</div>
+      <div class="ccv-pane-subtitle">{{ tool_summary|length }} calls in this session</div>
+    </div>
+    <div class="ccv-pane-scroll ccv-tool-list">
+      <section class="ccv-edited-files">
+        <div class="ccv-right-section-title">
+          <span>Files changed</span>
+          <small>{{ edited_files|length }}</small>
+        </div>
+        {% for file in edited_files %}
+        <a
+          href="#tool-{{ file.tool_id }}"
+          class="ccv-file-change {% if file.is_external %}is-external{% endif %}"
+        >
+          <span>{{ file.display_path }}</span>
+          <small>{{ file.tool_name }}</small>
+        </a>
+        {% else %}
+        <div class="ccv-empty-panel">No file edits.</div>
+        {% endfor %}
+      </section>
+
+      <section class="ccv-right-tools">
+        <div class="ccv-right-section-title">
+          <span>Tool calls</span>
+          <small>{{ tool_summary|length }}</small>
+        </div>
+        {% for tool in tool_summary %}
+        <div class="ccv-tool-list-card is-{{ tool.kind }}">
+          <div class="ccv-tool-list-top">
+            <span>{{ tool.name }}</span>
+            <small class="{% if tool.has_result %}is-done{% endif %}"
+              >{% if tool.has_result %}done{% else %}pending{% endif %}</small
+            >
+          </div>
+          {% if tool.summary %}
+          <div class="ccv-tool-list-summary">{{ tool.summary }}</div>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="ccv-empty-panel">No tool calls.</div>
+        {% endfor %}
+      </section>
+    </div>
+  </aside>
+</div>
+
+<style>
+  :root {
+    --ccv-header-height: 61px;
+    --ccv-border: #e4e4e7;
+    --ccv-muted: #71717a;
+    --ccv-soft: #f4f4f5;
+    --ccv-panel: #fafafa;
+    --ccv-blue: #2563eb;
+  }
+
+  body {
+    overflow: hidden;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .ccv-session-shell {
+    position: fixed;
+    inset: var(--ccv-header-height) 0 0 0;
+    display: grid;
+    grid-template-columns: minmax(16rem, 18rem) minmax(0, 1fr) minmax(16rem, 19rem);
+    min-height: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 26rem), #fff;
+  }
+
+  .ccv-left-pane,
+  .ccv-right-pane,
+  .ccv-main-pane {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .ccv-left-pane,
+  .ccv-right-pane {
+    display: flex;
+    flex-direction: column;
+    background: rgba(250, 250, 250, 0.94);
+    border-color: var(--ccv-border);
+  }
+  .ccv-left-pane {
+    border-right: 1px solid var(--ccv-border);
+  }
+  .ccv-right-pane {
+    border-left: 1px solid var(--ccv-border);
+  }
+
+  .ccv-main-pane {
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.8);
+  }
+
+  .ccv-pane-header {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--ccv-border);
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(8px);
+  }
+
+  .ccv-pane-scroll,
+  .ccv-main-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .ccv-pane-scroll {
+    flex: 1 1 auto;
+  }
+  .ccv-main-scroll {
+    flex: 1 1 auto;
+    padding: 1.5rem;
+    background: linear-gradient(180deg, #fff, #fafafa);
+  }
+
+  .ccv-back-link {
+    font-size: 0.75rem;
+    color: var(--ccv-muted);
+  }
+  .ccv-back-link:hover {
+    color: #18181b;
+  }
+  .ccv-pane-title {
+    margin-top: 0.35rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .ccv-pane-subtitle {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--ccv-muted);
+  }
+
+  .ccv-session-list,
+  .ccv-tool-list {
+    padding: 0.65rem;
+  }
+
+  .ccv-session-card,
+  .ccv-tool-list-card {
+    display: block;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 0.7rem;
+    transition:
+      border-color 120ms ease,
+      background 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .ccv-session-card + .ccv-session-card,
+  .ccv-tool-list-card + .ccv-tool-list-card {
+    margin-top: 0.45rem;
+  }
+  .ccv-session-card:hover,
+  .ccv-tool-list-card:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+  }
+  .ccv-session-card.is-active {
+    border-color: #60a5fa;
+    background: #dbeafe;
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+  }
+  .ccv-session-card-title {
+    font-size: 0.82rem;
+    font-weight: 650;
+    word-break: break-all;
+    line-height: 1.35;
+  }
+  .ccv-session-card-meta,
+  .ccv-tool-list-summary {
+    margin-top: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--ccv-muted);
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .ccv-chat-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--ccv-border);
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(10px);
+  }
+  .ccv-chat-title-wrap {
+    min-width: 0;
+  }
+  .ccv-chat-kicker {
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: var(--ccv-blue);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ccv-chat-title {
+    margin-top: 0.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.98rem;
+    font-weight: 700;
+  }
+  .ccv-chat-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: var(--ccv-muted);
+  }
+  .ccv-chat-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+  }
+  .ccv-ghost-button {
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.45rem;
+    padding: 0.38rem 0.6rem;
+    background: #fff;
+    font-size: 0.75rem;
+    color: #52525b;
+  }
+  .ccv-ghost-button:hover {
+    background: #f4f4f5;
+    color: #18181b;
+  }
+
+  .ccv-metrics {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 0.55rem;
+    border-bottom: 1px solid var(--ccv-border);
+    padding: 0.65rem 1rem;
+    background: #fafafa;
+    overflow-x: auto;
+  }
+  .ccv-metric {
+    min-width: 5.25rem;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 0.45rem 0.6rem;
+  }
+  .ccv-metric span {
+    display: block;
+    font-weight: 750;
+    line-height: 1;
+  }
+  .ccv-metric small {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.68rem;
+    color: var(--ccv-muted);
+  }
+  .ccv-metric.is-error {
+    border-color: #fecaca;
+    background: #fef2f2;
+  }
+  .ccv-metric.is-wide {
+    min-width: 11rem;
+  }
+  .ccv-metric.is-wide span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+  }
+
+  .ccv-find-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-bottom: 1px solid var(--ccv-border);
+    padding: 0.55rem 1rem;
+    background: #fff;
+  }
+  .ccv-find-bar input {
+    min-width: 0;
+    flex: 1 1 auto;
+    max-width: 24rem;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.45rem;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.78rem;
+  }
+  .ccv-find-bar button {
+    flex: 0 0 auto;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.45rem;
+    background: #fafafa;
+    padding: 0.38rem 0.55rem;
+    color: #52525b;
+    font-size: 0.74rem;
+  }
+  .ccv-find-bar button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+  #ccv-session-find-count {
+    flex: 0 0 3.2rem;
+    color: var(--ccv-muted);
+    font-size: 0.74rem;
+    text-align: right;
+  }
+  .ccv-message-row.is-search-match .ccv-message-stack {
+    border-radius: 0.7rem;
+    outline: 2px solid rgba(250, 204, 21, 0.35);
+    outline-offset: 0.25rem;
+  }
+  .ccv-message-row.is-search-active .ccv-message-stack {
+    outline-color: rgba(37, 99, 235, 0.6);
+  }
+  .ccv-search-highlight {
+    border-radius: 0.18rem;
+    background: #fde68a;
+    color: #18181b;
+    padding: 0 0.08rem;
+  }
+
+  .ccv-thread {
+    max-width: 58rem;
+    margin: 0 auto;
+    padding-bottom: 2rem;
+  }
+  .ccv-message-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.35rem;
+    align-items: flex-start;
+  }
+  .ccv-message-row.is-user {
+    flex-direction: row-reverse;
+    margin-left: auto;
+  }
+  .ccv-avatar {
+    flex: 0 0 2rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--ccv-border);
+    background: #fff;
+    color: #52525b;
+    font-size: 0.72rem;
+    font-weight: 800;
+    box-shadow: 0 1px 2px rgba(24, 24, 27, 0.05);
+  }
+  .ccv-message-row.is-user .ccv-avatar {
+    border-color: #93c5fd;
+    background: #2563eb;
+    color: white;
+  }
+  .ccv-message-row.is-error .ccv-avatar {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+  .ccv-message-row.is-meta {
+    margin-bottom: 0.6rem;
+  }
+  .ccv-message-row.is-meta .ccv-avatar {
+    flex-basis: 1.55rem;
+    width: 1.55rem;
+    height: 1.55rem;
+    background: #f4f4f5;
+    color: #71717a;
+    font-size: 0.65rem;
+    box-shadow: none;
+  }
+  .ccv-message-stack {
+    min-width: 0;
+    max-width: min(100%, 48rem);
+    flex: 1 1 auto;
+  }
+  .ccv-message-row.is-user .ccv-message-stack {
+    max-width: min(82%, 42rem);
+  }
+  .ccv-message-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.72rem;
+    color: var(--ccv-muted);
+  }
+  .ccv-message-row.is-user .ccv-message-meta {
+    justify-content: flex-end;
+  }
+  .ccv-entry-type {
+    border-radius: 0.35rem;
+    background: #f4f4f5;
+    padding: 0.08rem 0.35rem;
+    color: #71717a;
+  }
+  .ccv-entry-title {
+    font-weight: 700;
+    color: #27272a;
+  }
+  .ccv-entry-time {
+    color: #a1a1aa;
+  }
+
+  .ccv-bubble {
+    border-radius: 0.7rem;
+    border: 1px solid transparent;
+  }
+  .ccv-message-row.is-user .ccv-bubble {
+    border-radius: 1rem 0.25rem 1rem 1rem;
+    background: #2563eb;
+    color: white;
+    padding: 0.8rem 1rem;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.18);
+  }
+  .ccv-message-row.is-assistant .ccv-bubble {
+    padding: 0.25rem 0.1rem;
+  }
+  .ccv-message-row.is-meta .ccv-bubble {
+    border-color: var(--ccv-border);
+    background: #fafafa;
+    padding: 0.75rem 0.9rem;
+  }
+  .ccv-message-row.is-error .ccv-bubble {
+    border-color: #fecaca;
+    background: #fef2f2;
+    padding: 0.75rem 0.9rem;
+    color: #7f1d1d;
+  }
+  .ccv-meta-event {
+    max-width: min(100%, 42rem);
+    overflow: hidden;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.55rem;
+    background: #fff;
+    color: #52525b;
+  }
+  .ccv-meta-event summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.48rem 0.65rem;
+    list-style: none;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+  .ccv-meta-event summary::-webkit-details-marker {
+    display: none;
+  }
+  .ccv-meta-event summary:hover {
+    background: #f4f4f5;
+  }
+  .ccv-meta-event small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ccv-muted);
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+  .ccv-meta-event pre {
+    max-height: 18rem;
+    overflow: auto;
+    border-top: 1px solid var(--ccv-border);
+    padding: 0.65rem;
+    background: #fafafa;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+  .ccv-error-banner {
+    margin-bottom: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #b91c1c;
+  }
+
+  .ccv-markdown h1 {
+    margin: 0.75rem 0 0.35rem;
+    font-size: 1.25rem;
+    font-weight: 750;
+  }
+  .ccv-markdown h2 {
+    margin: 0.7rem 0 0.35rem;
+    font-size: 1.1rem;
+    font-weight: 750;
+  }
+  .ccv-markdown h3 {
+    margin: 0.6rem 0 0.3rem;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .ccv-markdown p {
+    margin: 0.28rem 0;
+    line-height: 1.68;
+    font-size: 0.925rem;
+  }
+  .ccv-markdown ul,
+  .ccv-markdown ol {
+    margin: 0.45rem 0 0.45rem 1.2rem;
+    line-height: 1.6;
+    font-size: 0.925rem;
+  }
+  .ccv-markdown ul {
+    list-style: disc;
+  }
+  .ccv-markdown ol {
+    list-style: decimal;
+  }
+  .ccv-markdown li + li {
+    margin-top: 0.18rem;
+  }
+  .ccv-markdown a {
+    color: #2563eb;
+    text-decoration: underline;
+    text-underline-offset: 0.15rem;
+  }
+  .ccv-markdown code {
+    border-radius: 0.3rem;
+    background: #f4f4f5;
+    padding: 0.08rem 0.28rem;
+    color: #27272a;
+    font-size: 0.82em;
+  }
+  .ccv-markdown pre {
+    margin: 0.6rem 0;
+    max-height: 26rem;
+    overflow: auto;
+    border-radius: 0.55rem;
+    background: #18181b;
+    padding: 0.75rem;
+    color: #f4f4f5;
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+  .ccv-markdown pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+  .ccv-markdown table {
+    display: block;
+    max-width: 100%;
+    margin: 0.65rem 0;
+    overflow: auto;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .ccv-markdown th,
+  .ccv-markdown td {
+    border: 1px solid var(--ccv-border);
+    padding: 0.4rem 0.55rem;
+  }
+  .ccv-markdown th {
+    background: #f4f4f5;
+    font-weight: 700;
+  }
+  .ccv-markdown.is-user-text p {
+    color: white;
+  }
+  .ccv-markdown.is-user-text a,
+  .ccv-markdown.is-user-text code {
+    color: white;
+  }
+  .ccv-markdown.is-user-text code {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .ccv-spacer {
+    height: 0.5rem;
+  }
+  .ccv-code {
+    margin: 0.55rem 0;
+    max-height: 24rem;
+    overflow: auto;
+    border-radius: 0.55rem;
+    background: #18181b;
+    padding: 0.75rem;
+    color: #f4f4f5;
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  .ccv-thinking,
+  .ccv-document {
+    margin-top: 0.55rem;
+    border: 1px dashed #d4d4d8;
+    border-radius: 0.55rem;
+    background: #fafafa;
+    padding: 0.6rem 0.75rem;
+    color: #52525b;
+    font-size: 0.82rem;
+  }
+  .ccv-thinking summary,
+  .ccv-document summary {
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .ccv-thinking pre,
+  .ccv-document pre {
+    margin-top: 0.5rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .ccv-tool-card {
+    margin-top: 0.75rem;
+    overflow: hidden;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.65rem;
+    background: #eff6ff;
+    color: #18181b;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06);
+  }
+  .ccv-tool-card summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.6rem 0.75rem;
+    list-style: none;
+  }
+  .ccv-tool-card summary::-webkit-details-marker {
+    display: none;
+  }
+  .ccv-tool-card summary:hover {
+    background: #dbeafe;
+  }
+  .ccv-tool-badge {
+    flex: 0 0 auto;
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #1d4ed8;
+  }
+  .ccv-tool-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    color: #52525b;
+  }
+  .ccv-tool-state {
+    margin-left: auto;
+    border-radius: 999px;
+    background: #e4e4e7;
+    padding: 0.12rem 0.45rem;
+    font-size: 0.68rem;
+    color: #52525b;
+    text-transform: uppercase;
+  }
+  .ccv-tool-state.is-done {
+    background: #dcfce7;
+    color: #15803d;
+  }
+  .ccv-tool-body {
+    border-top: 1px solid #bfdbfe;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.62);
+  }
+  .ccv-terminal {
+    overflow: hidden;
+    border-radius: 0.55rem;
+    background: #09090b;
+    color: #f4f4f5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.74rem;
+  }
+  .ccv-terminal-command {
+    border-bottom: 1px solid #27272a;
+    background: #18181b;
+    padding: 0.65rem 0.75rem;
+    word-break: break-word;
+  }
+  .ccv-terminal-description {
+    border-bottom: 1px solid #27272a;
+    background: #111827;
+    padding: 0.5rem 0.75rem;
+    color: #bfdbfe;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  .ccv-terminal-command span {
+    color: #4ade80;
+  }
+  .ccv-terminal pre,
+  .ccv-tool-input,
+  .ccv-tool-result {
+    max-height: 24rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.45;
+  }
+  .ccv-terminal pre {
+    padding: 0.65rem 0.75rem;
+  }
+  .ccv-tool-input,
+  .ccv-tool-result {
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 0.7rem;
+    font-size: 0.74rem;
+    color: #3f3f46;
+  }
+  .ccv-tool-result {
+    margin-top: 0.55rem;
+  }
+  .ccv-result-block {
+    margin-top: 0.6rem;
+  }
+  .ccv-result-stream {
+    margin-top: 0.45rem;
+    max-height: 24rem;
+    overflow: auto;
+    border-radius: 0.55rem;
+    padding: 0.7rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.74rem;
+    line-height: 1.45;
+  }
+  .ccv-result-stream.is-stdout {
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #14532d;
+  }
+  .ccv-result-stream.is-stderr {
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    color: #7f1d1d;
+  }
+  .ccv-result-meta,
+  .ccv-result-note {
+    margin-top: 0.45rem;
+    color: var(--ccv-muted);
+    font-size: 0.74rem;
+  }
+  .ccv-result-note.is-warning {
+    color: #b45309;
+  }
+  .ccv-result-file-list {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.45rem;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 0.55rem;
+    color: #3f3f46;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+  }
+  .ccv-file-tool-path {
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.5rem;
+    background: #fff;
+    padding: 0.45rem 0.6rem;
+    color: #27272a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.76rem;
+    word-break: break-word;
+  }
+  .ccv-file-tool-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    color: var(--ccv-muted);
+    font-size: 0.72rem;
+  }
+  .ccv-diff-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.55rem;
+    margin-top: 0.55rem;
+  }
+  .ccv-diff-pair pre {
+    max-height: 18rem;
+    overflow: auto;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.5rem;
+    background: #fff;
+    padding: 0.6rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+  .ccv-diff-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .ccv-diff-label.is-old {
+    color: #b91c1c;
+  }
+  .ccv-diff-label.is-new {
+    color: #15803d;
+  }
+  .ccv-todo-tool {
+    display: grid;
+    gap: 0.4rem;
+  }
+  .ccv-todo-row {
+    display: grid;
+    grid-template-columns: 6.8rem minmax(0, 1fr) 4rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.5rem;
+    background: #fff;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.78rem;
+  }
+  .ccv-todo-row span,
+  .ccv-todo-row small {
+    color: var(--ccv-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+  }
+  .ccv-todo-row strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 650;
+  }
+  .ccv-inline-image {
+    display: block;
+    max-width: 100%;
+    max-height: 34rem;
+    margin-top: 0.65rem;
+    object-fit: contain;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.65rem;
+    background: #fff;
+  }
+  .ccv-muted-note {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--ccv-muted);
+  }
+  .ccv-subagent {
+    margin-top: 0.65rem;
+    overflow: hidden;
+    border: 1px solid #bbf7d0;
+    border-radius: 0.55rem;
+    background: #f0fdf4;
+  }
+  .ccv-subagent summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.55rem 0.65rem;
+    list-style: none;
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: #166534;
+  }
+  .ccv-subagent summary::-webkit-details-marker {
+    display: none;
+  }
+  .ccv-subagent summary:hover {
+    background: #dcfce7;
+  }
+  .ccv-subagent summary small {
+    margin-left: auto;
+    color: #15803d;
+    font-size: 0.68rem;
+    font-weight: 600;
+  }
+  .ccv-subagent-prompt {
+    border-top: 1px solid #bbf7d0;
+    padding: 0.6rem 0.75rem;
+    background: #fff;
+    color: #166534;
+    font-size: 0.78rem;
+    line-height: 1.5;
+  }
+  .ccv-subagent-thread {
+    border-top: 1px solid #bbf7d0;
+    padding: 0.65rem;
+    background: rgba(255, 255, 255, 0.72);
+  }
+  .ccv-subagent-message {
+    border-left: 2px solid #86efac;
+    padding: 0.25rem 0 0.45rem 0.65rem;
+  }
+  .ccv-subagent-message + .ccv-subagent-message {
+    margin-top: 0.55rem;
+  }
+  .ccv-subagent-role {
+    margin-bottom: 0.2rem;
+    color: #15803d;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .ccv-subagent-tool {
+    margin-top: 0.35rem;
+    border-radius: 0.4rem;
+    background: #f4f4f5;
+    padding: 0.35rem 0.5rem;
+    color: #52525b;
+    font-size: 0.72rem;
+  }
+
+  .ccv-tool-list-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+  .ccv-tool-list-top small {
+    border-radius: 999px;
+    background: #e4e4e7;
+    padding: 0.1rem 0.4rem;
+    color: #52525b;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+  }
+  .ccv-tool-list-top small.is-done {
+    background: #dcfce7;
+    color: #15803d;
+  }
+  .ccv-empty-panel {
+    border: 1px dashed #d4d4d8;
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 1rem;
+    color: var(--ccv-muted);
+    font-size: 0.85rem;
+  }
+  .ccv-edited-files,
+  .ccv-right-tools {
+    display: grid;
+    gap: 0.45rem;
+  }
+  .ccv-right-tools {
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--ccv-border);
+  }
+  .ccv-right-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.15rem 0.15rem 0.25rem;
+    color: #27272a;
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+  .ccv-right-section-title small {
+    border-radius: 999px;
+    background: #f4f4f5;
+    padding: 0.08rem 0.4rem;
+    color: var(--ccv-muted);
+    font-size: 0.68rem;
+  }
+  .ccv-file-change {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 0.55rem 0.6rem;
+  }
+  .ccv-file-change:hover {
+    border-color: #86efac;
+    background: #f0fdf4;
+  }
+  .ccv-file-change span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    color: #27272a;
+  }
+  .ccv-file-change small {
+    color: var(--ccv-muted);
+    font-size: 0.66rem;
+    text-transform: uppercase;
+  }
+  .ccv-file-change.is-external span {
+    color: #b45309;
+  }
+
+  @media (max-width: 1024px) {
+    .ccv-session-shell {
+      grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
+    }
+    .ccv-right-pane {
+      display: none;
+    }
+  }
+  @media (max-width: 768px) {
+    .ccv-session-shell {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .ccv-left-pane {
+      display: none;
+    }
+    .ccv-main-scroll {
+      padding: 1rem;
+    }
+    .ccv-message-row.is-user .ccv-message-stack {
+      max-width: min(92%, 42rem);
+    }
+    .ccv-chat-actions {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  (() => {
+    const input = document.getElementById("ccv-session-find-input");
+    const count = document.getElementById("ccv-session-find-count");
+    const previousButton = document.querySelector("[data-ccv-find-prev]");
+    const nextButton = document.querySelector("[data-ccv-find-next]");
+    const rows = Array.from(document.querySelectorAll(".ccv-message-row"));
+    let matches = [];
+    let activeIndex = -1;
+
+    const setCount = () => {
+      if (!count) return;
+      count.textContent = matches.length === 0 ? "0/0" : `${activeIndex + 1}/${matches.length}`;
+      if (previousButton) previousButton.disabled = matches.length === 0;
+      if (nextButton) nextButton.disabled = matches.length === 0;
+    };
+
+    const clearHighlights = () => {
+      document.querySelectorAll("mark.ccv-search-highlight").forEach((mark) => {
+        const parent = mark.parentNode;
+        if (!parent) return;
+        mark.replaceWith(document.createTextNode(mark.textContent || ""));
+        parent.normalize();
+      });
+    };
+
+    const textNodesUnder = (root) => {
+      const nodes = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (true) {
+        const node = walker.nextNode();
+        if (!node) break;
+        const parent = node.parentElement;
+        if (!parent) continue;
+        if (["SCRIPT", "STYLE", "INPUT", "BUTTON", "MARK"].includes(parent.tagName)) continue;
+        nodes.push(node);
+      }
+      return nodes;
+    };
+
+    const highlightFirstMatch = (row, query) => {
+      const root = row.querySelector(".ccv-message-stack");
+      if (!root) return;
+      const normalizedQuery = query.toLowerCase();
+      for (const node of textNodesUnder(root)) {
+        const value = node.nodeValue || "";
+        const index = value.toLowerCase().indexOf(normalizedQuery);
+        if (index < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + query.length);
+        const mark = document.createElement("mark");
+        mark.className = "ccv-search-highlight";
+        range.surroundContents(mark);
+        return;
+      }
+    };
+
+    const activateMatch = (index) => {
+      rows.forEach((row) => row.classList.remove("is-search-active"));
+      if (matches.length === 0) {
+        activeIndex = -1;
+        setCount();
+        return;
+      }
+
+      activeIndex = (index + matches.length) % matches.length;
+      const row = matches[activeIndex];
+      row.classList.add("is-search-active");
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      setCount();
+    };
+
+    const runSearch = () => {
+      const query = input ? input.value.trim() : "";
+      clearHighlights();
+      rows.forEach((row) => {
+        row.classList.remove("is-search-match", "is-search-active");
+      });
+      matches = [];
+      activeIndex = -1;
+
+      if (query === "") {
+        setCount();
+        return;
+      }
+
+      const normalizedQuery = query.toLowerCase();
+      for (const row of rows) {
+        if (!row.textContent.toLowerCase().includes(normalizedQuery)) continue;
+        row.classList.add("is-search-match");
+        highlightFirstMatch(row, query);
+        matches.push(row);
+      }
+
+      activateMatch(0);
+    };
+
+    input?.addEventListener("input", runSearch);
+    previousButton?.addEventListener("click", () => activateMatch(activeIndex - 1));
+    nextButton?.addEventListener("click", () => activateMatch(activeIndex + 1));
+    window.addEventListener("keydown", (event) => {
+      const wantsFind = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f";
+      if (!wantsFind || !input) return;
+      event.preventDefault();
+      input.focus();
+      input.select();
+    });
+    setCount();
+  })();
+</script>
+{% endblock %}

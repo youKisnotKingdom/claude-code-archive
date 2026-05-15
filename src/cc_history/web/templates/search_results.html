@@ -1,0 +1,38 @@
+{% if q %} {% if index_summary %}
+<div class="mb-3 text-xs text-zinc-500">
+  Indexed {{ index_summary.indexed_sessions }} / scanned {{ index_summary.scanned_sessions }}
+  sessions.
+</div>
+{% endif %} {% if results %}
+<div class="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+  {% for result in results %}
+  <a
+    href="{{ result.url }}"
+    class="block border-b border-zinc-100 px-4 py-3 last:border-b-0 hover:bg-zinc-50"
+  >
+    <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+      <span class="rounded bg-zinc-100 px-2 py-1 font-medium text-zinc-700">{{ result.role }}</span>
+      <span>{{ result.user }}</span>
+      <span>{{ result.project_decoded or result.project }}</span>
+      {% if result.timestamp %}
+      <span>{{ result.timestamp }}</span>
+      {% endif %}
+    </div>
+    <div class="mt-2 break-words text-sm leading-6 text-zinc-800">{{ result.text|safe }}</div>
+    <div class="mt-1 break-all text-xs text-zinc-500">{{ result.session_id }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div
+  class="rounded-lg border border-dashed border-zinc-300 bg-white px-4 py-8 text-sm text-zinc-600"
+>
+  No results.
+</div>
+{% endif %} {% else %}
+<div
+  class="rounded-lg border border-dashed border-zinc-300 bg-white px-4 py-8 text-sm text-zinc-600"
+>
+  Enter a query to search messages.
+</div>
+{% endif %}

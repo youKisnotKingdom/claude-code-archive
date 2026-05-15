@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}CC History Viewer{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  </head>
+  <body class="min-h-screen bg-zinc-50 text-zinc-950">
+    <header class="border-b border-zinc-200 bg-white">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-5">
+        <a href="/" class="shrink-0 whitespace-nowrap text-lg font-semibold tracking-normal">
+          <span class="hidden sm:inline">CC History Viewer</span>
+          <span class="sm:hidden">CC Viewer</span>
+        </a>
+        <nav
+          class="flex shrink-0 items-center gap-3 whitespace-nowrap text-sm text-zinc-600 sm:gap-4"
+        >
+          <a href="/" class="hover:text-zinc-950">Users</a>
+          <a href="/search" class="hover:text-zinc-950">Search</a>
+          {% if auth_enabled() %}
+          <form method="post" action="/logout">
+            <button class="hover:text-zinc-950" type="submit">Logout</button>
+          </form>
+          {% endif %}
+          <span>Phase 1</span>
+        </nav>
+      </div>
+    </header>
+    <main class="mx-auto max-w-6xl px-5 py-6">{% block content %}{% endblock %}</main>
+  </body>
+</html>

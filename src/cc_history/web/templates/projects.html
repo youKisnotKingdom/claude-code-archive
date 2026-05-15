@@ -1,0 +1,37 @@
+{% extends "base.html" %} {% block title %}Projects - {{ user }}{% endblock %} {% block content %}
+<nav class="mb-4 text-sm text-zinc-500">
+  <a href="/" class="hover:text-zinc-900">Users</a>
+  <span class="mx-2">/</span>
+  <span>{{ user }}</span>
+</nav>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold">Projects</h1>
+  <p class="mt-1 text-sm text-zinc-600">
+    {{ user }} · {{ user_stats.project_count }} projects · {{ user_stats.session_count }} sessions ·
+    {{ user_stats.message_count }} messages
+  </p>
+</div>
+
+{% if projects %}
+<div class="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+  {% for project in projects %}
+  <a
+    href="/users/{{ user }}/projects/{{ project.name }}"
+    class="block border-b border-zinc-100 px-4 py-3 last:border-b-0 hover:bg-zinc-50"
+  >
+    <div class="font-medium">{{ project.decoded }}</div>
+    <div class="mt-1 text-xs text-zinc-500">
+      {{ project.name }} · {{ project.stats.session_count }} sessions · {{
+      project.stats.message_count }} messages · latest {{ project.stats.latest_activity or "-" }}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div
+  class="rounded-lg border border-dashed border-zinc-300 bg-white px-4 py-8 text-sm text-zinc-600"
+>
+  No projects found.
+</div>
+{% endif %} {% endblock %}

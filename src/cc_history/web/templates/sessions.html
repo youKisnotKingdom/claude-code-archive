@@ -1,0 +1,57 @@
+{% extends "base.html" %} {% block title %}Sessions - {{ project_decoded }}{% endblock %} {% block
+content %}
+<nav class="mb-4 text-sm text-zinc-500">
+  <a href="/" class="hover:text-zinc-900">Users</a>
+  <span class="mx-2">/</span>
+  <a href="/users/{{ user }}" class="hover:text-zinc-900">{{ user }}</a>
+  <span class="mx-2">/</span>
+  <span>{{ project_decoded }}</span>
+</nav>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold">Sessions</h1>
+  <p class="mt-1 text-sm text-zinc-600">
+    {{ project_decoded }} · {{ project_stats.session_count }} sessions · {{
+    project_stats.message_count }} messages · latest {{ project_stats.latest_activity or "-" }}
+  </p>
+</div>
+
+{% if sessions %}
+<div class="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+  {% for session in sessions %}
+  <a
+    href="/users/{{ user }}/projects/{{ project }}/sessions/{{ session.session_id }}"
+    class="block border-b border-zinc-100 px-4 py-3 last:border-b-0 hover:bg-zinc-50"
+  >
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <div class="truncate font-medium">{{ session.title }}</div>
+        <div class="mt-1 truncate text-xs text-zinc-500">{{ session.session_id }}</div>
+        {% if session.first_user_text %}
+        <div class="mt-2 line-clamp-2 text-sm text-zinc-600">{{ session.first_user_text }}</div>
+        {% endif %}
+      </div>
+      <div class="shrink-0 text-right text-xs text-zinc-500">
+        <div>{{ session.message_count }} messages</div>
+        {% if session.model_name %}
+        <div class="mt-1">{{ session.model_name }}</div>
+        {% endif %} {% if session.total_tokens %}
+        <div class="mt-1">{{ session.total_tokens }} tokens</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
+      <span>{{ session.size }} bytes</span>
+      {% if session.last_message_at %}<span>latest {{ session.last_message_at }}</span>{% endif %}
+      {% if session.git_branch %}<span>branch {{ session.git_branch }}</span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div
+  class="rounded-lg border border-dashed border-zinc-300 bg-white px-4 py-8 text-sm text-zinc-600"
+>
+  No sessions found.
+</div>
+{% endif %} {% endblock %}
