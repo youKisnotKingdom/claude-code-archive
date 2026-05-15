@@ -66,16 +66,18 @@
 | -------------------------- | ------------------------------------------------- |
 | `README.md` (このファイル) | プロジェクト全体像と思想                          |
 | `CONTEXT.md`               | これまでに試したこと・詰まったポイント (前提知識) |
+| `CURRENT_STATUS.md`        | 現在の実装状況・検証結果・次の推奨作業            |
 | `ARCHITECTURE.md`          | 詳細な設計・ディレクトリ構造・DB スキーマ         |
 | `JSONL_SCHEMA.md`          | Claude Code JSONL のデータ構造リファレンス        |
 | `ROADMAP.md`               | Phase 1〜7 の段階的実装計画                       |
 | `PHASE1_TASKS.md`          | 最初に着手する MVP の具体的タスク                 |
 | `KNOWLEDGE_EXTRACTION.md`  | ナレッジ抽出・再利用の研究設計                    |
+| `AGENT_CONTEXT_HANDOFF.md` | AGENT に渡す文脈パックの手順・UI 設計             |
 
 ## 進め方
 
 1. `CONTEXT.md` を読んで前提を把握
 2. `ROADMAP.md` で全体像を理解
-3. `PHASE1_TASKS.md` の指示通りに MVP を作る
-4. 動いたら Phase 2 以降に進む
-5. 柱 B (Phase 4 以降) は `KNOWLEDGE_EXTRACTION.md` も併せて読む
+3. `CURRENT_STATUS.md` で現在の実装済み範囲を確認する
+4. Phase 4 以降は `KNOWLEDGE_EXTRACTION.md` と
+   `AGENT_CONTEXT_HANDOFF.md` も併せて読む

@@ -9,11 +9,31 @@ content %}
 </nav>
 
 <div class="mb-6">
-  <h1 class="text-2xl font-semibold">Sessions</h1>
-  <p class="mt-1 text-sm text-zinc-600">
-    {{ project_decoded }} · {{ project_stats.session_count }} sessions · {{
-    project_stats.message_count }} messages · latest {{ project_stats.latest_activity or "-" }}
-  </p>
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold">Sessions</h1>
+      <p class="mt-1 text-sm text-zinc-600">
+        {{ project_decoded }} · {{ project_stats.session_count }} sessions · {{
+        project_stats.message_count }} messages · latest {{ project_stats.latest_activity or "-" }}
+      </p>
+    </div>
+    <a
+      href="{{ agent_context_url }}"
+      class="rounded border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+      >Create Agent Context</a
+    >
+    <form method="post" action="/labels/backfill">
+      <input type="hidden" name="user" value="{{ user }}" />
+      <input type="hidden" name="project" value="{{ project }}" />
+      <input type="hidden" name="return_to" value="/users/{{ user }}/projects/{{ project }}" />
+      <button
+        type="submit"
+        class="rounded border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+      >
+        Label Project Histories
+      </button>
+    </form>
+  </div>
 </div>
 
 {% if sessions %}
@@ -25,10 +45,16 @@ content %}
   >
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
-        <div class="truncate font-medium">{{ session.title }}</div>
+        <div class="truncate font-medium">
+          {% if session.is_favorite %}<span class="mr-1 text-amber-600">Favorite</span>{% endif %}
+          {{ session.title }}
+        </div>
         <div class="mt-1 truncate text-xs text-zinc-500">{{ session.session_id }}</div>
         {% if session.first_user_text %}
         <div class="mt-2 line-clamp-2 text-sm text-zinc-600">{{ session.first_user_text }}</div>
+        {% endif %}
+        {% if session.annotation.note %}
+        <div class="mt-2 line-clamp-2 text-sm text-zinc-700">{{ session.annotation.note }}</div>
         {% endif %}
       </div>
       <div class="shrink-0 text-right text-xs text-zinc-500">
@@ -44,6 +70,12 @@ content %}
       <span>{{ session.size }} bytes</span>
       {% if session.last_message_at %}<span>latest {{ session.last_message_at }}</span>{% endif %}
       {% if session.git_branch %}<span>branch {{ session.git_branch }}</span>{% endif %}
+      {% if session.is_archived %}<span>archived</span>{% endif %}
+      {% if session.review_status != "unreviewed" %}<span>{{ session.review_status }}</span>{% endif %}
+      {% if session.knowledge_scope != "unset" %}<span>{{ session.knowledge_scope }}</span>{% endif %}
+      {% for tag in session.tags %}
+      <span class="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-700">{{ tag }}</span>
+      {% endfor %}
     </div>
   </a>
   {% endfor %}

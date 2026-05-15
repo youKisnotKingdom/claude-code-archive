@@ -171,3 +171,91 @@ def test_session_page_loads_subagent_file_transcript(
     assert "ccv-subagent" in response.text
     assert "Inspect side task" in response.text
     assert "Side task complete." in response.text
+
+
+def test_session_annotation_form_updates_local_viewer_metadata(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    nas_root = tmp_path / "private-share"
+    cache_dir = tmp_path / "cache"
+    project_dir = nas_root / "alice" / "claude-logs" / "projects" / "-home-alice-demo"
+    project_dir.mkdir(parents=True)
+    session_file = project_dir / "sample-session.jsonl"
+    session_file.write_text(
+        '{"type":"user","uuid":"u1","message":{"role":"user","content":"Please inspect."}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(scanner.settings, "nas_root", nas_root)
+    monkeypatch.setattr(scanner.settings, "cache_dir", cache_dir)
+
+    client = TestClient(app)
+    session_url = "/users/alice/projects/-home-alice-demo/sessions/sample-session"
+    response = client.post(
+        session_url + "/annotation",
+        data={
+            "manual_title": "Reviewed deploy lesson",
+            "note": "Promote this after extracting the deploy rule.",
+            "tags": "deploy, pitfall",
+            "is_favorite": "on",
+            "review_status": "candidate",
+            "knowledge_scope": "project",
+        },
+        follow_redirects=False,
+    )
+    session_response = client.get(session_url)
+    project_response = client.get("/users/alice/projects/-home-alice-demo")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == session_url
+    assert session_response.status_code == 200
+    assert "Reviewed deploy lesson" in session_response.text
+    assert "Promote this after extracting the deploy rule." in session_response.text
+    assert "deploy" in session_response.text
+    assert "candidate" in session_response.text
+    assert "project" in session_response.text
+    assert project_response.status_code == 200
+    assert "Reviewed deploy lesson" in project_response.text
+    assert "Favorite" in project_response.text
+    assert "pitfall" in project_response.text
+
+
+def test_label_backfill_route_adds_auto_labels_to_project_sessions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    nas_root = tmp_path / "private-share"
+    cache_dir = tmp_path / "cache"
+    project_dir = nas_root / "alice" / "claude-logs" / "projects" / "-home-alice-demo"
+    project_dir.mkdir(parents=True)
+    session_file = project_dir / "sample-session.jsonl"
+    session_file.write_text(
+        "\n".join(
+            [
+                '{"type":"user","uuid":"u1","message":{"role":"user","content":"Fix failing pytest"}}',
+                '{"type":"assistant","uuid":"a1","message":{"id":"m1","type":"message","role":"assistant","model":"claude","content":[{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"pytest"}}]}}',
+            ],
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(scanner.settings, "nas_root", nas_root)
+    monkeypatch.setattr(scanner.settings, "cache_dir", cache_dir)
+
+    client = TestClient(app)
+    response = client.post(
+        "/labels/backfill",
+        data={
+            "user": "alice",
+            "project": "-home-alice-demo",
+            "return_to": "/users/alice/projects/-home-alice-demo",
+        },
+        follow_redirects=False,
+    )
+    project_response = client.get("/users/alice/projects/-home-alice-demo")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/users/alice/projects/-home-alice-demo"
+    assert project_response.status_code == 200
+    assert "debugging" in project_response.text
+    assert "testing" in project_response.text
+    assert "uses-bash" in project_response.text

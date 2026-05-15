@@ -1,9 +1,11 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from cc_history.services import agent_context
+from cc_history.services import annotations
 from cc_history.services import indexer
 from cc_history.services import scanner
 from cc_history.services import search as search_service
@@ -24,6 +26,54 @@ def _message_html(text: str) -> str:
 
 
 templates.env.filters["message_html"] = _message_html
+
+
+def _session_to_view(
+    session: scanner.SessionInfo,
+    annotation: annotations.SessionAnnotation,
+) -> dict[str, object]:
+    return {
+        "user": session.user,
+        "project": session.project,
+        "project_decoded": session.project_decoded,
+        "session_id": session.session_id,
+        "file_path": session.file_path,
+        "mtime": session.mtime,
+        "size": session.size,
+        "title": annotation.manual_title or session.title,
+        "source_title": session.title,
+        "first_user_text": session.first_user_text,
+        "message_count": session.message_count,
+        "last_message_at": session.last_message_at,
+        "model_name": session.model_name,
+        "total_tokens": session.total_tokens,
+        "cwd": session.cwd,
+        "git_branch": session.git_branch,
+        "annotation": annotation,
+        "tags": annotation.tags,
+        "is_favorite": annotation.is_favorite,
+        "is_archived": annotation.is_archived,
+        "review_status": annotation.review_status,
+        "knowledge_scope": annotation.knowledge_scope,
+    }
+
+
+def _session_views(user: str, project: str) -> list[dict[str, object]]:
+    project_annotations = annotations.list_project_annotations(user, project)
+    return [
+        _session_to_view(
+            session,
+            project_annotations.get(session.session_id)
+            or annotations.empty_session_annotation(user, project, session.session_id),
+        )
+        for session in scanner.list_sessions(user, project)
+    ]
+
+
+def _safe_return_to(value: str) -> str:
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return "/"
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -113,6 +163,56 @@ def search_results(request: Request, q: str = "", user: str | None = None) -> HT
     return templates.TemplateResponse(request, "search_results.html", context)
 
 
+@router.get("/agent-context", response_class=HTMLResponse)
+def agent_context_page(
+    request: Request,
+    user: str | None = None,
+    project: str | None = None,
+    status: list[str] | None = Query(default=None),
+    scope: list[str] | None = Query(default=None),
+    include_archived: bool = False,
+) -> HTMLResponse:
+    selected_statuses = status or list(agent_context.DEFAULT_STATUSES)
+    selected_scopes = scope or list(agent_context.DEFAULT_SCOPES)
+    pack = agent_context.build_agent_context_pack(
+        user=user,
+        project=project,
+        statuses=selected_statuses,
+        scopes=selected_scopes,
+        include_archived=include_archived,
+    )
+    projects = scanner.list_projects(user) if user else []
+    return templates.TemplateResponse(
+        request,
+        "agent_context.html",
+        {
+            "pack": pack,
+            "users": scanner.list_users(),
+            "projects": projects,
+            "selected_user": user or "",
+            "selected_project": project or "",
+            "selected_statuses": selected_statuses,
+            "selected_scopes": selected_scopes,
+            "include_archived": include_archived,
+            "review_statuses": annotations.REVIEW_STATUSES,
+            "knowledge_scopes": annotations.KNOWLEDGE_SCOPES,
+        },
+    )
+
+
+@router.post("/labels/backfill")
+def backfill_labels(
+    user: str = Form(default=""),
+    project: str = Form(default=""),
+    return_to: str = Form(default="/agent-context"),
+) -> RedirectResponse:
+    annotations.backfill_auto_labels(
+        user=user or None,
+        project=project or None,
+    )
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.get("/users/{user}", response_class=HTMLResponse)
 def user_projects(request: Request, user: str) -> HTMLResponse:
     user_stats = stats.collect_user_stats(user)
@@ -137,7 +237,6 @@ def user_projects(request: Request, user: str) -> HTMLResponse:
 
 @router.get("/users/{user}/projects/{project}", response_class=HTMLResponse)
 def project_sessions(request: Request, user: str, project: str) -> HTMLResponse:
-    sessions = scanner.list_sessions(user, project)
     project_stats = stats.collect_project_stats(user, project)
     return templates.TemplateResponse(
         request,
@@ -147,7 +246,8 @@ def project_sessions(request: Request, user: str, project: str) -> HTMLResponse:
             "project": project,
             "project_decoded": scanner.decode_project_name(project),
             "project_stats": project_stats,
-            "sessions": sessions,
+            "sessions": _session_views(user, project),
+            "agent_context_url": f"/agent-context?user={user}&project={project}",
         },
     )
 
@@ -161,11 +261,13 @@ def session_detail(request: Request, user: str, project: str, session_id: str) -
     entries = list(parse_jsonl_file(path))
     agent_sessions = sidechain.load_agent_sessions(path.parent, session_id)
     views = build_conversation_views(entries, agent_sessions=agent_sessions)
-    sessions = scanner.list_sessions(user, project)
+    raw_sessions = scanner.list_sessions(user, project)
+    sessions = _session_views(user, project)
     current_session = next(
-        (session for session in sessions if session.session_id == session_id),
+        (session for session in raw_sessions if session.session_id == session_id),
         None,
     )
+    annotation = annotations.get_session_annotation(user, project, session_id)
     tool_summary = [tool for entry in views for tool in entry["tools"]]
     edited_files = extract_edited_files(
         views,
@@ -186,12 +288,53 @@ def session_detail(request: Request, user: str, project: str, session_id: str) -
             "project": project,
             "project_decoded": scanner.decode_project_name(project),
             "session_id": session_id,
-            "session_title": current_session.title if current_session is not None else session_id,
+            "session_title": (
+                annotation.manual_title
+                or (current_session.title if current_session is not None else session_id)
+            ),
             "current_session": current_session,
+            "annotation": annotation,
+            "annotation_tags_text": ", ".join(annotation.tags),
+            "review_statuses": annotations.REVIEW_STATUSES,
+            "knowledge_scopes": annotations.KNOWLEDGE_SCOPES,
             "entries": views,
             "sessions": sessions,
             "tool_summary": tool_summary,
             "edited_files": edited_files,
             "session_summary": session_summary,
         },
+    )
+
+
+@router.post("/users/{user}/projects/{project}/sessions/{session_id}/annotation")
+def update_session_annotation(
+    user: str,
+    project: str,
+    session_id: str,
+    manual_title: str = Form(default=""),
+    note: str = Form(default=""),
+    tags: str = Form(default=""),
+    is_favorite: bool = Form(default=False),
+    is_archived: bool = Form(default=False),
+    review_status: str = Form(default="unreviewed"),
+    knowledge_scope: str = Form(default="unset"),
+) -> RedirectResponse:
+    if scanner.get_session_path(user, project, session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    annotations.save_session_annotation(
+        user=user,
+        project=project,
+        session_id=session_id,
+        manual_title=manual_title,
+        note=note,
+        is_favorite=is_favorite,
+        is_archived=is_archived,
+        review_status=review_status,
+        knowledge_scope=knowledge_scope,
+        tags=annotations.parse_tag_text(tags),
+    )
+    return RedirectResponse(
+        f"/users/{user}/projects/{project}/sessions/{session_id}",
+        status_code=303,
     )

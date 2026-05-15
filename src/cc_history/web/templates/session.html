@@ -13,10 +13,18 @@
         href="/users/{{ user }}/projects/{{ project }}/sessions/{{ session.session_id }}"
         class="ccv-session-card {% if session.session_id == session_id %}is-active{% endif %}"
       >
-        <div class="ccv-session-card-title">{{ session.title }}</div>
+        <div class="ccv-session-card-title">
+          {% if session.is_favorite %}<span class="ccv-inline-flag">Favorite</span>{% endif %} {{
+          session.title }}
+        </div>
         <div class="ccv-session-card-meta">
           {{ session.message_count }} messages · {{ session.size }} bytes
         </div>
+        {% if session.tags %}
+        <div class="ccv-session-card-tags">
+          {% for tag in session.tags %}<span>{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
       </a>
       {% endfor %}
     </div>
@@ -28,6 +36,13 @@
         <div class="ccv-chat-kicker">{{ user }}</div>
         <h1 class="ccv-chat-title">{{ session_title }}</h1>
         <div class="ccv-chat-subtitle">{{ project_decoded }} · {{ session_id }}</div>
+        <div class="ccv-chat-tags">
+          {% if annotation.is_favorite %}<span>Favorite</span>{% endif %} {% if
+          annotation.is_archived %}<span>Archived</span>{% endif %}
+          <span>{{ annotation.review_status }}</span>
+          <span>{{ annotation.knowledge_scope }}</span>
+          {% for tag in annotation.tags %}<span>{{ tag }}</span>{% endfor %}
+        </div>
       </div>
       <div class="ccv-chat-actions">
         <a href="/search?user={{ user }}" class="ccv-ghost-button">Search user</a>
@@ -60,6 +75,71 @@
       </div>
       {% endif %}
     </div>
+
+    <details class="ccv-annotation-panel" open>
+      <summary>
+        <span>Knowledge notes</span>
+        <small>local viewer metadata</small>
+      </summary>
+      <form
+        method="post"
+        action="/users/{{ user }}/projects/{{ project }}/sessions/{{ session_id }}/annotation"
+      >
+        <div class="ccv-annotation-grid">
+          <label>
+            <span>Title override</span>
+            <input
+              name="manual_title"
+              value="{{ annotation.manual_title or '' }}"
+              placeholder="{{ current_session.title if current_session else session_id }}"
+            />
+          </label>
+          <label>
+            <span>Tags</span>
+            <input name="tags" value="{{ annotation_tags_text }}" placeholder="pattern, pitfall" />
+          </label>
+          <label>
+            <span>Review status</span>
+            <select name="review_status">
+              {% for status in review_statuses %}
+              <option value="{{ status }}" {% if annotation.review_status == status %}selected{%
+              endif %}>{{ status }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Scope</span>
+            <select name="knowledge_scope">
+              {% for scope in knowledge_scopes %}
+              <option value="{{ scope }}" {% if annotation.knowledge_scope == scope %}selected{%
+              endif %}>{{ scope }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label class="ccv-annotation-note">
+          <span>Note</span>
+          <textarea
+            name="note"
+            rows="3"
+            placeholder="What should future sessions learn from this?"
+          >{{ annotation.note }}</textarea>
+        </label>
+        <div class="ccv-annotation-actions">
+          <label class="ccv-checkbox">
+            <input type="checkbox" name="is_favorite" {% if annotation.is_favorite %}checked{%
+            endif %} />
+            <span>Favorite</span>
+          </label>
+          <label class="ccv-checkbox">
+            <input type="checkbox" name="is_archived" {% if annotation.is_archived %}checked{%
+            endif %} />
+            <span>Archived</span>
+          </label>
+          <button type="submit">Save notes</button>
+        </div>
+      </form>
+    </details>
 
     <div class="ccv-find-bar">
       <input
@@ -515,6 +595,29 @@
     line-height: 1.35;
     word-break: break-word;
   }
+  .ccv-session-card-tags,
+  .ccv-chat-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.45rem;
+  }
+  .ccv-session-card-tags span,
+  .ccv-chat-tags span,
+  .ccv-inline-flag {
+    border-radius: 999px;
+    background: #f4f4f5;
+    padding: 0.12rem 0.45rem;
+    color: #52525b;
+    font-size: 0.66rem;
+    font-weight: 650;
+  }
+  .ccv-inline-flag {
+    display: inline-block;
+    margin-right: 0.25rem;
+    background: #fef3c7;
+    color: #92400e;
+  }
 
   .ccv-chat-header {
     flex: 0 0 auto;
@@ -609,6 +712,92 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.82rem;
+  }
+
+  .ccv-annotation-panel {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--ccv-border);
+    background: #fff;
+  }
+  .ccv-annotation-panel summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    list-style: none;
+    padding: 0.55rem 1rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+  .ccv-annotation-panel summary::-webkit-details-marker {
+    display: none;
+  }
+  .ccv-annotation-panel summary small {
+    color: var(--ccv-muted);
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+  .ccv-annotation-panel form {
+    display: grid;
+    gap: 0.65rem;
+    border-top: 1px solid var(--ccv-border);
+    padding: 0.75rem 1rem;
+    background: #fafafa;
+  }
+  .ccv-annotation-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+  .ccv-annotation-panel label {
+    min-width: 0;
+  }
+  .ccv-annotation-panel label span {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #52525b;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+  .ccv-annotation-panel input,
+  .ccv-annotation-panel select,
+  .ccv-annotation-panel textarea {
+    width: 100%;
+    border: 1px solid var(--ccv-border);
+    border-radius: 0.45rem;
+    background: #fff;
+    padding: 0.42rem 0.55rem;
+    color: #27272a;
+    font-size: 0.76rem;
+  }
+  .ccv-annotation-panel textarea {
+    resize: vertical;
+    line-height: 1.45;
+  }
+  .ccv-annotation-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .ccv-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .ccv-checkbox input {
+    width: auto;
+  }
+  .ccv-checkbox span {
+    margin: 0;
+  }
+  .ccv-annotation-actions button {
+    margin-left: auto;
+    border-radius: 0.45rem;
+    background: #27272a;
+    padding: 0.43rem 0.7rem;
+    color: #fff;
+    font-size: 0.76rem;
+    font-weight: 700;
   }
 
   .ccv-find-bar {
@@ -1370,6 +1559,16 @@
     }
     .ccv-chat-actions {
       display: none;
+    }
+    .ccv-annotation-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .ccv-annotation-actions {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .ccv-annotation-actions button {
+      margin-left: 0;
     }
   }
 </style>
