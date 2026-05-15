@@ -128,6 +128,8 @@ Implemented:
 - Project pages link to the Agent Context builder for that project.
 - Project pages and the Agent Context page can refresh auto labels without
   overwriting manual notes.
+- `/review` inbox for filtering auto-labeled sessions and editing title, notes,
+  tags, review status, scope, favorite, and archive state inline.
 - Annotation data stays in the local cache DB and never writes back to JSONL.
 
 Design intent:
@@ -149,7 +151,9 @@ The next implementation slice should be small and user-visible:
 1. Add a project-level annotation overview or inbox.
 2. Add "Add to context" actions for session and search result rows.
 3. Add saved context packs and a review/export history.
-4. Keep all generated context local unless explicitly exported.
+4. Add optional `CC_EXPORT_DIR` export for reviewed artifacts.
+5. Add Git status/commit support scoped only to `CC_EXPORT_DIR`.
+6. Keep all generated context local unless explicitly exported.
 
 This creates the first useful bridge from "history viewer" to "knowledge
 manager" without requiring LLM extraction yet.

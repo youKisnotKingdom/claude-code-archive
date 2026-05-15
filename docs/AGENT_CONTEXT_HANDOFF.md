@@ -120,6 +120,47 @@ Output:
 - Diff against the last generated version
 - Manual edits before export
 
+### Export Directory And Git
+
+The default source of truth for curation should remain the local SQLite cache.
+It is better for editing, filtering, and review workflows. Exported files are
+reviewed artifacts, not the primary working store.
+
+Recommended settings:
+
+```bash
+CC_CACHE_DIR=/tmp/cc-history-viewer-cache
+CC_EXPORT_DIR=/path/to/cc-history-knowledge
+```
+
+`CC_CACHE_DIR` is application state and should not be committed. `CC_EXPORT_DIR`
+is optional output that can be Git-managed when the user wants a durable,
+reviewable knowledge base.
+
+Suggested export layout:
+
+```text
+context-packs/
+  <slug>.md
+  <slug>.sources.json
+projects/
+  <project-slug>/
+    agent.md
+    decisions.md
+    pitfalls.md
+    commands.md
+```
+
+Git integration should be scoped only to `CC_EXPORT_DIR`:
+
+- show branch, latest commit, and dirty files
+- stage only generated/exported files under `CC_EXPORT_DIR`
+- require a human-written or human-confirmed commit message
+- do not push by default
+- never add raw JSONL, cache DBs, `.env`, credentials, or NAS paths
+
+This can be added after the Review Inbox and saved context packs exist.
+
 ### Phase 7: MCP Or Hook Delivery
 
 Serve the same context through machine-readable tools:
@@ -140,6 +181,10 @@ Add a top-level `Agent Context` entry.
 
 It should open a builder rather than a static page, because the useful context
 depends on the next task.
+
+Add a top-level `Review` entry for the intake workflow. It should list
+auto-labeled sessions and let the user promote, ignore, archive, or scope them
+without opening every session detail page.
 
 ### Context Basket
 

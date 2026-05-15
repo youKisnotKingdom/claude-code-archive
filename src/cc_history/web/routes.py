@@ -213,6 +213,76 @@ def backfill_labels(
     return RedirectResponse(_safe_return_to(return_to), status_code=303)
 
 
+@router.get("/review", response_class=HTMLResponse)
+def review_inbox(
+    request: Request,
+    user: str | None = None,
+    project: str | None = None,
+    status: str | None = None,
+    scope: str | None = None,
+    tag: str | None = None,
+    include_archived: bool = False,
+) -> HTMLResponse:
+    projects = scanner.list_projects(user) if user else []
+    items = annotations.list_review_items(
+        user=user,
+        project=project,
+        status=status,
+        scope=scope,
+        tag=tag,
+        include_archived=include_archived,
+    )
+    return templates.TemplateResponse(
+        request,
+        "review.html",
+        {
+            "items": items,
+            "users": scanner.list_users(),
+            "projects": projects,
+            "selected_user": user or "",
+            "selected_project": project or "",
+            "selected_status": status or "",
+            "selected_scope": scope or "",
+            "selected_tag": tag or "",
+            "include_archived": include_archived,
+            "review_statuses": annotations.REVIEW_STATUSES,
+            "knowledge_scopes": annotations.KNOWLEDGE_SCOPES,
+        },
+    )
+
+
+@router.post("/review/session")
+def update_review_session(
+    user: str = Form(),
+    project: str = Form(),
+    session_id: str = Form(),
+    manual_title: str = Form(default=""),
+    note: str = Form(default=""),
+    tags: str = Form(default=""),
+    is_favorite: bool = Form(default=False),
+    is_archived: bool = Form(default=False),
+    review_status: str = Form(default="unreviewed"),
+    knowledge_scope: str = Form(default="unset"),
+    return_to: str = Form(default="/review"),
+) -> RedirectResponse:
+    if scanner.get_session_path(user, project, session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    annotations.save_session_annotation(
+        user=user,
+        project=project,
+        session_id=session_id,
+        manual_title=manual_title,
+        note=note,
+        is_favorite=is_favorite,
+        is_archived=is_archived,
+        review_status=review_status,
+        knowledge_scope=knowledge_scope,
+        tags=annotations.parse_tag_text(tags),
+    )
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.get("/users/{user}", response_class=HTMLResponse)
 def user_projects(request: Request, user: str) -> HTMLResponse:
     user_stats = stats.collect_user_stats(user)

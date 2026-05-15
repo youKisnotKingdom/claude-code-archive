@@ -259,3 +259,56 @@ def test_label_backfill_route_adds_auto_labels_to_project_sessions(
     assert "debugging" in project_response.text
     assert "testing" in project_response.text
     assert "uses-bash" in project_response.text
+
+
+def test_review_inbox_lists_and_updates_session_annotations(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    nas_root = tmp_path / "private-share"
+    cache_dir = tmp_path / "cache"
+    project_dir = nas_root / "alice" / "claude-logs" / "projects" / "-home-alice-demo"
+    project_dir.mkdir(parents=True)
+    (project_dir / "sample-session.jsonl").write_text(
+        '{"type":"user","uuid":"u1","message":{"role":"user","content":"Fix pytest"}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(scanner.settings, "nas_root", nas_root)
+    monkeypatch.setattr(scanner.settings, "cache_dir", cache_dir)
+
+    client = TestClient(app)
+    client.post(
+        "/labels/backfill",
+        data={
+            "user": "alice",
+            "project": "-home-alice-demo",
+            "return_to": "/review",
+        },
+    )
+    page = client.get("/review")
+    update = client.post(
+        "/review/session",
+        data={
+            "user": "alice",
+            "project": "-home-alice-demo",
+            "session_id": "sample-session",
+            "manual_title": "Pytest lesson",
+            "note": "Use this as a testing pattern.",
+            "tags": "testing, pattern",
+            "review_status": "reviewed",
+            "knowledge_scope": "project",
+            "return_to": "/review?status=reviewed",
+        },
+        follow_redirects=False,
+    )
+    reviewed = client.get("/review", params={"status": "reviewed"})
+
+    assert page.status_code == 200
+    assert "Review Inbox" in page.text
+    assert "sample-session" in page.text
+    assert "testing" in page.text
+    assert update.status_code == 303
+    assert update.headers["location"] == "/review?status=reviewed"
+    assert reviewed.status_code == 200
+    assert "Pytest lesson" in reviewed.text
+    assert "Use this as a testing pattern." in reviewed.text

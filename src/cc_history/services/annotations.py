@@ -36,6 +36,26 @@ class AutoLabelSummary:
     inserted_labels: int
 
 
+@dataclass(frozen=True)
+class ReviewItem:
+    user: str
+    project: str
+    project_decoded: str
+    session_id: str
+    title: str
+    source_title: str
+    first_user_text: str | None
+    message_count: int
+    last_message_at: str | None
+    note: str
+    is_favorite: bool
+    is_archived: bool
+    review_status: str
+    knowledge_scope: str
+    tags: list[str]
+    url: str
+
+
 def empty_session_annotation(user: str, project: str, session_id: str) -> SessionAnnotation:
     return SessionAnnotation(
         user=user,
@@ -285,6 +305,67 @@ def list_project_annotations(user: str, project: str) -> dict[str, SessionAnnota
             tags=tags_by_session.get(session_id, []),
         )
     return annotations
+
+
+def list_review_items(
+    user: str | None = None,
+    project: str | None = None,
+    status: str | None = None,
+    scope: str | None = None,
+    tag: str | None = None,
+    include_archived: bool = False,
+) -> list[ReviewItem]:
+    normalized_status = status or None
+    normalized_scope = scope or None
+    normalized_tag = tag.strip().lower() if tag else None
+    items: list[ReviewItem] = []
+
+    for user_name, project_name in _project_keys(user, project):
+        project_annotations = list_project_annotations(user_name, project_name)
+        for session in scanner.list_sessions(user_name, project_name):
+            annotation = project_annotations.get(session.session_id) or empty_session_annotation(
+                user_name,
+                project_name,
+                session.session_id,
+            )
+            if not include_archived and annotation.is_archived:
+                continue
+            if normalized_status and annotation.review_status != normalized_status:
+                continue
+            if normalized_scope and annotation.knowledge_scope != normalized_scope:
+                continue
+            if normalized_tag and normalized_tag not in annotation.tags:
+                continue
+            items.append(
+                ReviewItem(
+                    user=user_name,
+                    project=project_name,
+                    project_decoded=session.project_decoded,
+                    session_id=session.session_id,
+                    title=annotation.manual_title or session.title,
+                    source_title=session.title,
+                    first_user_text=session.first_user_text,
+                    message_count=session.message_count,
+                    last_message_at=session.last_message_at,
+                    note=annotation.note,
+                    is_favorite=annotation.is_favorite,
+                    is_archived=annotation.is_archived,
+                    review_status=annotation.review_status,
+                    knowledge_scope=annotation.knowledge_scope,
+                    tags=annotation.tags,
+                    url=f"/users/{user_name}/projects/{project_name}/sessions/{session.session_id}",
+                ),
+            )
+
+    return sorted(
+        items,
+        key=lambda item: (
+            item.review_status != "unreviewed",
+            item.user,
+            item.project,
+            item.last_message_at or "",
+        ),
+    )
 
 
 def save_session_annotation(

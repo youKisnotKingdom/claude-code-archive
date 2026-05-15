@@ -114,3 +114,46 @@ def test_backfill_auto_labels_all_sessions_and_preserves_manual_tags(
     assert second.review_status == "unreviewed"
     assert second.knowledge_scope == "unset"
     assert "docs" in second.tags
+
+
+def test_list_review_items_filters_by_status_scope_and_tag(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    nas_root = tmp_path / "private-share"
+    cache_dir = tmp_path / "cache"
+    project_dir = nas_root / "alice" / "claude-logs" / "projects" / "-home-alice-app"
+    _write_session(
+        project_dir,
+        "session-1",
+        ['{"type":"user","uuid":"u1","message":{"role":"user","content":"Fix pytest"}}'],
+    )
+    _write_session(
+        project_dir,
+        "session-2",
+        ['{"type":"user","uuid":"u2","message":{"role":"user","content":"Read docs"}}'],
+    )
+    monkeypatch.setattr(scanner.settings, "nas_root", nas_root)
+    monkeypatch.setattr(scanner.settings, "cache_dir", cache_dir)
+    monkeypatch.setattr(annotations.settings, "cache_dir", cache_dir)
+    annotations.backfill_auto_labels()
+    annotations.save_session_annotation(
+        user="alice",
+        project="-home-alice-app",
+        session_id="session-1",
+        manual_title="Pytest fix",
+        note="Candidate for project testing rule.",
+        is_favorite=False,
+        is_archived=False,
+        review_status="candidate",
+        knowledge_scope="project",
+        tags=["testing"],
+    )
+
+    all_items = annotations.list_review_items()
+    candidate_items = annotations.list_review_items(status="candidate", scope="project")
+    testing_items = annotations.list_review_items(tag="testing")
+
+    assert [item.session_id for item in all_items] == ["session-2", "session-1"]
+    assert [item.session_id for item in candidate_items] == ["session-1"]
+    assert [item.session_id for item in testing_items] == ["session-1"]
